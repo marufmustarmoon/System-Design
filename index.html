@@ -444,6 +444,7 @@
           sessionId: 0,
           chunks: [],
           chunkIndex: 0,
+          charIndex: 0,
           rate: 1
         };
 
@@ -620,6 +621,7 @@
           speakState.paused = false;
           speakState.chunks = [];
           speakState.chunkIndex = 0;
+          speakState.charIndex = 0;
           speakState.rate = 1;
           updateProgressTime();
           setIdleControls();
@@ -649,15 +651,33 @@
             return;
           }
 
-          var utter = new SpeechSynthesisUtterance(speakState.chunks[speakState.chunkIndex]);
+          var fullChunk = speakState.chunks[speakState.chunkIndex] || "";
+          var startAt = Math.min(speakState.charIndex || 0, fullChunk.length);
+          var chunkText = fullChunk.slice(startAt).trim();
+          if (!chunkText) {
+            speakState.chunkIndex += 1;
+            speakState.charIndex = 0;
+            speakNextChunk(sessionId);
+            return;
+          }
+
+          var utter = new SpeechSynthesisUtterance(chunkText);
           utter.voice = speakState.selectedVoice;
           utter.lang = (speakState.selectedVoice && speakState.selectedVoice.lang) || "bn-BD";
           utter.rate = speakState.rate;
           utter.pitch = 1;
+          utter.onboundary = function (event) {
+            if (sessionId !== speakState.sessionId) return;
+            if (speakState.paused) return;
+            if (typeof event.charIndex === "number") {
+              speakState.charIndex = startAt + event.charIndex;
+            }
+          };
           utter.onend = function () {
             if (sessionId !== speakState.sessionId) return;
             if (speakState.paused) return;
             speakState.chunkIndex += 1;
+            speakState.charIndex = 0;
             speakNextChunk(sessionId);
           };
           utter.onerror = function () {
@@ -694,6 +714,7 @@
           speakState.selectedVoice = voice;
           speakState.chunks = splitTextIntoChunks(content, 900);
           speakState.chunkIndex = 0;
+          speakState.charIndex = 0;
           speakState.rate = rateSelect ? parseFloat(rateSelect.value || "1") : 1;
           speakState.elapsedMs = 0;
           speakState.startedAt = Date.now();
@@ -709,9 +730,10 @@
           if (!speechSupported) return;
           if (!speakState.speaking || speakState.paused) return;
           if (!window.speechSynthesis.speaking) return;
-          window.speechSynthesis.pause();
           snapshotElapsed();
           speakState.paused = true;
+          speakState.sessionId += 1;
+          window.speechSynthesis.cancel();
           stopProgressTicker();
           setPausedControls();
           updateProgressTime();
@@ -722,21 +744,15 @@
           if (!speechSupported) return;
           if (!speakState.speaking || !speakState.paused) return;
 
-          window.speechSynthesis.resume();
           speakState.paused = false;
           speakState.startedAt = Date.now() - speakState.elapsedMs;
           setSpeakingControls();
           startProgressTicker();
           updateListenStatus("আবার শুরু: " + formatClock(speakState.elapsedMs) + " থেকে।");
 
-          var sessionId = speakState.sessionId;
-          setTimeout(function () {
-            if (sessionId !== speakState.sessionId) return;
-            if (!speakState.speaking || speakState.paused) return;
-            if (!window.speechSynthesis.speaking) {
-              speakNextChunk(sessionId);
-            }
-          }, 160);
+          var sessionId = speakState.sessionId + 1;
+          speakState.sessionId = sessionId;
+          speakNextChunk(sessionId);
         }
 
         function refreshVoiceAvailability() {
