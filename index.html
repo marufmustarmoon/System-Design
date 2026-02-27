@@ -285,7 +285,7 @@
       .listen-panel {
         position: fixed;
         right: 16px;
-        bottom: 18px;
+        bottom: calc(18px + env(safe-area-inset-bottom));
         z-index: 9998;
         width: min(340px, calc(100vw - 24px));
         padding: 12px;
@@ -301,6 +301,7 @@
         gap: 8px;
         align-items: center;
         flex-wrap: wrap;
+        margin-bottom: 8px;
       }
 
       .listen-btn {
@@ -313,6 +314,7 @@
         font-size: 0.9rem;
         font-weight: 600;
         padding: 8px 10px;
+        margin-bottom: 2px;
         cursor: pointer;
       }
 
@@ -381,7 +383,7 @@
 
         .listen-panel {
           right: 10px;
-          bottom: 12px;
+          bottom: calc(12px + env(safe-area-inset-bottom));
           width: min(360px, calc(100vw - 16px));
         }
       }
@@ -445,7 +447,10 @@
           chunks: [],
           chunkIndex: 0,
           charIndex: 0,
-          rate: 1
+          rate: 1,
+          currentChunkStartedAt: 0,
+          currentChunkStartCharIndex: 0,
+          boundarySeenInCurrentChunk: false
         };
 
         function getNoBanglaVoiceMessage() {
@@ -539,24 +544,34 @@
           if (!clean) return [];
           if (clean.length <= maxLen) return [clean];
 
-          var sentences = clean.split(/[।.!?]+\s+/);
+          var sentences = clean.replace(/([।.!?])\s+/g, "$1\n").split("\n");
           var result = [];
-          var current = "";
+
           for (var i = 0; i < sentences.length; i += 1) {
-            var s = sentences[i];
-            if (!s) continue;
-            if (!current) {
-              current = s;
+            var sentence = (sentences[i] || "").trim();
+            if (!sentence) continue;
+
+            if (sentence.length <= maxLen) {
+              result.push(sentence);
               continue;
             }
-            if ((current + " " + s).length <= maxLen) {
-              current += " " + s;
-            } else {
-              result.push(current);
-              current = s;
+
+            var words = sentence.split(/\s+/);
+            var current = "";
+            for (var w = 0; w < words.length; w += 1) {
+              var token = words[w];
+              if (!token) continue;
+              var next = current ? current + " " + token : token;
+              if (next.length <= maxLen) {
+                current = next;
+              } else {
+                if (current) result.push(current);
+                current = token;
+              }
             }
+            if (current) result.push(current);
           }
-          if (current) result.push(current);
+
           return result;
         }
 
@@ -623,6 +638,9 @@
           speakState.chunkIndex = 0;
           speakState.charIndex = 0;
           speakState.rate = 1;
+          speakState.currentChunkStartedAt = 0;
+          speakState.currentChunkStartCharIndex = 0;
+          speakState.boundarySeenInCurrentChunk = false;
           updateProgressTime();
           setIdleControls();
         }
@@ -634,6 +652,24 @@
           window.speechSynthesis.cancel();
           resetListeningState();
           updateListenStatus(message || "শোনা বন্ধ করা হয়েছে।");
+        }
+
+        function estimateCharIndexFromTime() {
+          if (speakState.boundarySeenInCurrentChunk) return;
+          if (!speakState.currentChunkStartedAt) return;
+          if (speakState.chunkIndex < 0 || speakState.chunkIndex >= speakState.chunks.length) return;
+
+          var fullChunk = speakState.chunks[speakState.chunkIndex] || "";
+          if (!fullChunk) return;
+
+          var elapsedInChunkMs = Math.max(0, Date.now() - speakState.currentChunkStartedAt);
+          var approxCharsPerSec = 14 * (speakState.rate || 1);
+          var approxAdvance = Math.floor((elapsedInChunkMs / 1000) * approxCharsPerSec);
+          var estimated = speakState.currentChunkStartCharIndex + approxAdvance;
+
+          if (estimated > speakState.charIndex) {
+            speakState.charIndex = Math.min(fullChunk.length - 1, estimated);
+          }
         }
 
         function finishReading(sessionId) {
@@ -653,13 +689,17 @@
 
           var fullChunk = speakState.chunks[speakState.chunkIndex] || "";
           var startAt = Math.min(speakState.charIndex || 0, fullChunk.length);
-          var chunkText = fullChunk.slice(startAt).trim();
-          if (!chunkText) {
+          var chunkText = fullChunk.slice(startAt);
+          if (!chunkText || !chunkText.trim()) {
             speakState.chunkIndex += 1;
             speakState.charIndex = 0;
             speakNextChunk(sessionId);
             return;
           }
+
+          speakState.currentChunkStartedAt = Date.now();
+          speakState.currentChunkStartCharIndex = startAt;
+          speakState.boundarySeenInCurrentChunk = false;
 
           var utter = new SpeechSynthesisUtterance(chunkText);
           utter.voice = speakState.selectedVoice;
@@ -670,6 +710,7 @@
             if (sessionId !== speakState.sessionId) return;
             if (speakState.paused) return;
             if (typeof event.charIndex === "number") {
+              speakState.boundarySeenInCurrentChunk = true;
               speakState.charIndex = startAt + event.charIndex;
             }
           };
@@ -678,6 +719,9 @@
             if (speakState.paused) return;
             speakState.chunkIndex += 1;
             speakState.charIndex = 0;
+            speakState.currentChunkStartedAt = 0;
+            speakState.currentChunkStartCharIndex = 0;
+            speakState.boundarySeenInCurrentChunk = false;
             speakNextChunk(sessionId);
           };
           utter.onerror = function () {
@@ -712,7 +756,7 @@
           var sessionId = speakState.sessionId + 1;
           speakState.sessionId = sessionId;
           speakState.selectedVoice = voice;
-          speakState.chunks = splitTextIntoChunks(content, 900);
+          speakState.chunks = splitTextIntoChunks(content, 180);
           speakState.chunkIndex = 0;
           speakState.charIndex = 0;
           speakState.rate = rateSelect ? parseFloat(rateSelect.value || "1") : 1;
@@ -731,6 +775,7 @@
           if (!speakState.speaking || speakState.paused) return;
           if (!window.speechSynthesis.speaking) return;
           snapshotElapsed();
+          estimateCharIndexFromTime();
           speakState.paused = true;
           speakState.sessionId += 1;
           window.speechSynthesis.cancel();
