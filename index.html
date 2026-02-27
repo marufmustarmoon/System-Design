@@ -411,7 +411,9 @@
     <div id="app"></div>
     <div class="listen-panel" id="listen-panel" hidden>
       <div class="listen-controls">
-        <button type="button" class="listen-btn is-primary" id="listen-toggle">শুনুন</button>
+        <button type="button" class="listen-btn is-primary" id="listen-start">শুনুন</button>
+        <button type="button" class="listen-btn" id="listen-pause" disabled>থামান</button>
+        <button type="button" class="listen-btn" id="listen-resume" disabled>চালান</button>
         <button type="button" class="listen-btn" id="listen-stop" disabled>বন্ধ</button>
         <label class="listen-rate" for="listen-rate">
           গতি
@@ -439,7 +441,10 @@
           startedAt: 0,
           elapsedMs: 0,
           timerId: null,
-          sessionId: 0
+          sessionId: 0,
+          chunks: [],
+          chunkIndex: 0,
+          rate: 1
         };
 
         function getNoBanglaVoiceMessage() {
@@ -487,9 +492,7 @@
           var total = Math.max(0, Math.floor(ms / 1000));
           var minutes = Math.floor(total / 60);
           var seconds = total % 60;
-          var m = String(minutes).padStart(2, "0");
-          var s = String(seconds).padStart(2, "0");
-          return m + ":" + s;
+          return String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
         }
 
         function snapshotElapsed() {
@@ -502,8 +505,7 @@
         function updateProgressTime() {
           var node = document.getElementById("listen-progress-time");
           if (!node) return;
-          var elapsed = snapshotElapsed();
-          node.textContent = "সময়: " + formatClock(elapsed);
+          node.textContent = "সময়: " + formatClock(snapshotElapsed());
         }
 
         function stopProgressTicker() {
@@ -522,7 +524,6 @@
         function getReadableText() {
           var section = document.querySelector(".markdown-section");
           if (!section) return "";
-
           var nodes = section.querySelectorAll("h1, h2, h3, h4, p, li, blockquote");
           var chunks = [];
           for (var i = 0; i < nodes.length; i += 1) {
@@ -540,7 +541,6 @@
           var sentences = clean.split(/[।.!?]+\s+/);
           var result = [];
           var current = "";
-
           for (var i = 0; i < sentences.length; i += 1) {
             var s = sentences[i];
             if (!s) continue;
@@ -564,21 +564,65 @@
           if (node) node.textContent = text;
         }
 
-        function resetListenButtons(options) {
-          var config = options || {};
-          var toggle = document.getElementById("listen-toggle");
-          var stop = document.getElementById("listen-stop");
-          if (toggle) toggle.textContent = "শুনুন";
-          if (stop) stop.disabled = true;
-          stopProgressTicker();
+        function controls() {
+          return {
+            start: document.getElementById("listen-start"),
+            pause: document.getElementById("listen-pause"),
+            resume: document.getElementById("listen-resume"),
+            stop: document.getElementById("listen-stop")
+          };
+        }
 
+        function setControls(state) {
+          var c = controls();
+          if (!c.start || !c.pause || !c.resume || !c.stop) return;
+          c.start.disabled = !!state.start;
+          c.pause.disabled = !!state.pause;
+          c.resume.disabled = !!state.resume;
+          c.stop.disabled = !!state.stop;
+        }
+
+        function setIdleControls() {
+          setControls({
+            start: !speakState.selectedVoice,
+            pause: true,
+            resume: true,
+            stop: true
+          });
+        }
+
+        function setSpeakingControls() {
+          setControls({
+            start: true,
+            pause: false,
+            resume: true,
+            stop: false
+          });
+        }
+
+        function setPausedControls() {
+          setControls({
+            start: true,
+            pause: true,
+            resume: false,
+            stop: false
+          });
+        }
+
+        function resetListeningState(options) {
+          var config = options || {};
+          stopProgressTicker();
           if (!config.keepElapsed) {
             speakState.elapsedMs = 0;
           }
           speakState.startedAt = 0;
           speakState.speaking = false;
           speakState.paused = false;
+          speakState.chunks = [];
+          speakState.chunkIndex = 0;
+          speakState.rate = 1;
           updateProgressTime();
+          setIdleControls();
         }
 
         function stopSpeaking(message) {
@@ -586,15 +630,45 @@
           snapshotElapsed();
           speakState.sessionId += 1;
           window.speechSynthesis.cancel();
-          resetListenButtons();
-          if (message) {
-            updateListenStatus(message);
-          } else {
-            updateListenStatus("শোনা বন্ধ করা হয়েছে।");
-          }
+          resetListeningState();
+          updateListenStatus(message || "শোনা বন্ধ করা হয়েছে।");
         }
 
-        function speakCurrentPage() {
+        function finishReading(sessionId) {
+          if (sessionId !== speakState.sessionId) return;
+          var doneAt = formatClock(snapshotElapsed());
+          resetListeningState({ keepElapsed: true });
+          updateListenStatus("পড়া শেষ হয়েছে: " + doneAt + "।");
+        }
+
+        function speakNextChunk(sessionId) {
+          if (sessionId !== speakState.sessionId) return;
+          if (!speakState.speaking || speakState.paused) return;
+          if (speakState.chunkIndex >= speakState.chunks.length) {
+            finishReading(sessionId);
+            return;
+          }
+
+          var utter = new SpeechSynthesisUtterance(speakState.chunks[speakState.chunkIndex]);
+          utter.voice = speakState.selectedVoice;
+          utter.lang = (speakState.selectedVoice && speakState.selectedVoice.lang) || "bn-BD";
+          utter.rate = speakState.rate;
+          utter.pitch = 1;
+          utter.onend = function () {
+            if (sessionId !== speakState.sessionId) return;
+            if (speakState.paused) return;
+            speakState.chunkIndex += 1;
+            speakNextChunk(sessionId);
+          };
+          utter.onerror = function () {
+            if (sessionId !== speakState.sessionId) return;
+            resetListeningState();
+            updateListenStatus("শোনা ব্যর্থ হয়েছে।");
+          };
+          window.speechSynthesis.speak(utter);
+        }
+
+        function startSpeaking() {
           if (!speechSupported) return;
           var content = getReadableText();
           if (!content) {
@@ -610,91 +684,65 @@
             } else {
               updateListenStatus(getNoBanglaVoiceMessage());
             }
+            setIdleControls();
             return;
           }
 
           var rateSelect = document.getElementById("listen-rate");
-          var rate = rateSelect ? parseFloat(rateSelect.value || "1") : 1;
-          var pieces = splitTextIntoChunks(content, 900);
-          var total = pieces.length;
-          var completed = 0;
           var sessionId = speakState.sessionId + 1;
-          var toggle = document.getElementById("listen-toggle");
-          var stop = document.getElementById("listen-stop");
-
           speakState.sessionId = sessionId;
+          speakState.selectedVoice = voice;
+          speakState.chunks = splitTextIntoChunks(content, 900);
+          speakState.chunkIndex = 0;
+          speakState.rate = rateSelect ? parseFloat(rateSelect.value || "1") : 1;
           speakState.elapsedMs = 0;
           speakState.startedAt = Date.now();
-          if (toggle) toggle.textContent = "থামান";
-          if (stop) stop.disabled = false;
           speakState.speaking = true;
           speakState.paused = false;
+          setSpeakingControls();
           startProgressTicker();
           updateListenStatus("বাংলায় পড়া শুরু হয়েছে।");
-
-          for (var i = 0; i < pieces.length; i += 1) {
-            var utter = new SpeechSynthesisUtterance(pieces[i]);
-            utter.voice = voice;
-            utter.lang = voice.lang || "bn-BD";
-            utter.rate = rate;
-            utter.pitch = 1;
-            utter.onend = function () {
-              if (sessionId !== speakState.sessionId) return;
-              completed += 1;
-              if (completed >= total && !window.speechSynthesis.speaking) {
-                var doneAt = formatClock(snapshotElapsed());
-                resetListenButtons({ keepElapsed: true });
-                updateListenStatus("পড়া শেষ হয়েছে: " + doneAt + "।");
-              }
-            };
-            utter.onerror = function () {
-              if (sessionId !== speakState.sessionId) return;
-              resetListenButtons();
-              updateListenStatus("শোনা ব্যর্থ হয়েছে।");
-            };
-            window.speechSynthesis.speak(utter);
-          }
+          speakNextChunk(sessionId);
         }
 
-        function toggleSpeak() {
+        function pauseSpeaking() {
           if (!speechSupported) return;
-          var toggle = document.getElementById("listen-toggle");
-          var stop = document.getElementById("listen-stop");
+          if (!speakState.speaking || speakState.paused) return;
+          if (!window.speechSynthesis.speaking) return;
+          window.speechSynthesis.pause();
+          snapshotElapsed();
+          speakState.paused = true;
+          stopProgressTicker();
+          setPausedControls();
+          updateProgressTime();
+          updateListenStatus("থেমেছে: " + formatClock(speakState.elapsedMs) + "। চালান চাপলে এখান থেকেই চলবে।");
+        }
 
-          if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
-            window.speechSynthesis.pause();
-            snapshotElapsed();
-            speakState.paused = true;
-            if (toggle) toggle.textContent = "চালান";
-            if (stop) stop.disabled = false;
-            updateListenStatus("থেমেছে: " + formatClock(speakState.elapsedMs) + "। চালান চাপলে এখান থেকেই চলবে।");
-            updateProgressTime();
-            return;
-          }
+        function resumeSpeaking() {
+          if (!speechSupported) return;
+          if (!speakState.speaking || !speakState.paused) return;
 
-          if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-            speakState.startedAt = Date.now() - speakState.elapsedMs;
-            speakState.paused = false;
-            if (toggle) toggle.textContent = "থামান";
-            if (stop) stop.disabled = false;
-            startProgressTicker();
-            updateListenStatus("আবার শুরু: " + formatClock(speakState.elapsedMs) + " থেকে।");
-            return;
-          }
+          window.speechSynthesis.resume();
+          speakState.paused = false;
+          speakState.startedAt = Date.now() - speakState.elapsedMs;
+          setSpeakingControls();
+          startProgressTicker();
+          updateListenStatus("আবার শুরু: " + formatClock(speakState.elapsedMs) + " থেকে।");
 
-          speakCurrentPage();
+          var sessionId = speakState.sessionId;
+          setTimeout(function () {
+            if (sessionId !== speakState.sessionId) return;
+            if (!speakState.speaking || speakState.paused) return;
+            if (!window.speechSynthesis.speaking) {
+              speakNextChunk(sessionId);
+            }
+          }, 160);
         }
 
         function refreshVoiceAvailability() {
-          var voice = choosePreferredVoice();
-          var toggle = document.getElementById("listen-toggle");
-          var stop = document.getElementById("listen-stop");
-          if (!toggle || !stop) return;
-
-          if (!voice) {
-            toggle.disabled = true;
-            stop.disabled = true;
+          choosePreferredVoice();
+          if (!speakState.selectedVoice) {
+            setControls({ start: true, pause: true, resume: true, stop: true });
             if (!speakState.voices.length) {
               updateListenStatus("Voice list load হচ্ছে... কয়েক সেকেন্ড অপেক্ষা করুন।");
             } else {
@@ -703,29 +751,39 @@
             return;
           }
 
-          toggle.disabled = false;
-          stop.disabled = !speakState.speaking;
-          updateListenStatus("এই পেজ শুনতে \"শুনুন\" চাপুন।");
+          if (!speakState.speaking) {
+            setIdleControls();
+          } else if (speakState.paused) {
+            setPausedControls();
+          } else {
+            setSpeakingControls();
+          }
+
+          if (!speakState.speaking) {
+            updateListenStatus("এই পেজ শুনতে \"শুনুন\" চাপুন।");
+          }
         }
 
         function setupListeningMode() {
           var panel = document.getElementById("listen-panel");
-          var toggle = document.getElementById("listen-toggle");
+          var start = document.getElementById("listen-start");
+          var pause = document.getElementById("listen-pause");
+          var resume = document.getElementById("listen-resume");
           var stop = document.getElementById("listen-stop");
-
-          if (!panel || !toggle || !stop) return;
+          if (!panel || !start || !pause || !resume || !stop) return;
 
           if (!speechSupported) {
             panel.hidden = false;
-            toggle.disabled = true;
-            stop.disabled = true;
+            setControls({ start: true, pause: true, resume: true, stop: true });
             updateListenStatus("এই browser-এ speech synthesis supported নয়।");
             return;
           }
 
           panel.hidden = false;
           refreshVoiceAvailability();
-          toggle.addEventListener("click", toggleSpeak);
+          start.addEventListener("click", startSpeaking);
+          pause.addEventListener("click", pauseSpeaking);
+          resume.addEventListener("click", resumeSpeaking);
           stop.addEventListener("click", function () {
             stopSpeaking("শোনা বন্ধ করা হয়েছে।");
           });
@@ -785,7 +843,7 @@
                 if (speechSupported && (window.speechSynthesis.speaking || window.speechSynthesis.paused)) {
                   window.speechSynthesis.cancel();
                 }
-                resetListenButtons();
+                resetListeningState();
                 if (speechSupported) {
                   refreshVoiceAvailability();
                 }
