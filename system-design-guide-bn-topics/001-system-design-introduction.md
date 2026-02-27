@@ -4,143 +4,107 @@ _টপিক নম্বর: 001_
 
 ## গল্পে বুঝি
 
-মন্টু মিয়াঁ `System Design – Introduction` টপিক থেকে শিখছেন system design-এ আসল বিষয় শুধু diagram না; reasoning structure।
-
-একটা problem statement শুনে requirements, constraints, scale, failure, APIs, data model, এবং trade-off কীভাবে ধরতে হয় - এই foundation না থাকলে পরের advanced topic-ও অস্পষ্ট লাগে।
-
-Interview-তে strong candidate সাধারণত প্রথমেই scope clear করে, assumptions বলে, তারপর design layer-by-layer খুলে।
-
-এই foundation টপিকগুলো সেই disciplined approach তৈরি করে।
-
-সহজ করে বললে `System Design – Introduction` টপিকটি নিয়ে সোর্স নোটের মূল কথাটা হলো: System Design is the practice of choosing components, data flow, and trade-offs to build software that works reliably at real-world scale।
-
-বাস্তব উদাহরণ ভাবতে চাইলে `YouTube`-এর মতো সিস্টেমে `System Design – Introduction`-এর trade-off খুব স্পষ্ট দেখা যায়।
-
----
+মুন মিয়াঁর টিম প্রোডাক্ট launch করার পর দেখল, একটি feature যা কাজ করে on one machine পারে fail যখন ইউজাররা, ডেটা, অথবা ট্রাফিক grow।
+প্রথম incident-এ মুন ভাবল সমস্যা সহজ: বড় server নিলেই হবে। সে CPU/RAM বাড়াল, machine class upgrade করল, load কিছুদিন কমলও।
+কিন্তু এক মাস পর আবার peak hour-এ timeout, queue buildup, আর customer complaint ফিরে এলো। তখন তার confusion: "hardware কম, নাকি design ভুল?"
+তদন্তে বোঝা গেল আসল সমস্যা ছিল architecture decision। কারণ dependency coupling, shared state, আর failure handling plan ছাড়া শুধু machine বড় করলে সমস্যা ঘুরে আবার আসে।
+এই জায়গায় `System Design – Introduction` সামনে আসে। সহজ ভাষায়, System Design is the practice of choosing components, data flow, and trade-offs to build software that works reliably at real-world scale।
+মুন টিমকে Wrong vs Right decision টেবিল বানাতে বলল:
+- Wrong: requirement না বুঝে আগে tool/pattern নির্বাচন
+- Wrong: one-box optimization ধরে নেওয়া যে long-term scaling solved
+- Right: user impact, SLO, এবং failure domain ধরে design boundary ঠিক করা
+- Right: `System Design – Introduction` নিলে কোন metric ভালো হবে (latency/error/cost) আর কোন complexity বাড়বে, আগে থেকেই লিখে রাখা
+এতেই business আর tech একসাথে align হলো: কোন feature-এ speed priority, কোন feature-এ correctness priority, আর কোথায় controlled degradation চলবে।
+শেষে মুনের টিম ৩টা প্রশ্নের পরিষ্কার উত্তর দাঁড় করাল:
+- **"কেন শুধু বড় server কিনলেই হবে না?"** কারণ এতে capacity ceiling, high cost jump, আর single point of failure রয়ে যায়।
+- **"কেন বেশি machine কাজে দেয়?"** কারণ load ভাগ করা যায়, parallel processing বাড়ে, এবং failure isolation পাওয়া যায়।
+- **"horizontal scaling-এর পর নতুন সমস্যা কী?"** consistency, coordination, observability, rebalancing, এবং distributed debugging-এর মতো নতুন operational challenge আসে।
 
 ### `System Design – Introduction` আসলে কীভাবে সাহায্য করে?
 
-`System Design – Introduction` ব্যবহার করার আসল মূল্য হলো requirement, behavior, এবং trade-off-কে একইসাথে পরিষ্কার করে design decision নেওয়া।
-
-- problem statement থেকে requirements, constraints, আর success criteria structuredভাবে বের করতে সাহায্য করে।
-- diagram-এর আগে reasoning framework দাঁড় করাতে সাহায্য করে।
-- trade-off, failure case, এবং scalability question আগে থেকে ধরতে সুবিধা দেয়।
-- interview answer-কে random tool listing থেকে structured design discussion-এ বদলে দেয়।
-
----
+`System Design – Introduction` decision-making-কে concrete করে: abstract theory থেকে সরাসরি architecture action-এ নিয়ে আসে।
+- requirement -> bottleneck -> design choice mapping পরিষ্কার হয়।
+- performance, cost, reliability, complexity - এই চার trade-off একসাথে দেখা যায়।
+- junior engineer implementation বুঝতে পারে, senior engineer review board-এ decision defend করতে পারে।
+- failure path আগে ধরতে পারলে incident frequency ও blast radius দুইটাই কমে।
 
 ### কখন `System Design – Introduction` বেছে নেওয়া সঠিক?
 
-মন্টু নিজের কাছে কয়েকটা প্রশ্ন করে:
-
-- কোথায়/কখন use করবেন? → জন্য designing new সিস্টেমগুলো অথবা evolving existing সিস্টেমগুলো এর অধীনে scale/reliability constraints.
-- Business value কোথায় বেশি? → একটি feature যা কাজ করে on one machine পারে fail যখন ইউজাররা, ডেটা, অথবা ট্রাফিক grow.
-- এই টপিক কোন সমস্যা solve করে - এক লাইনে সেটা কি পরিষ্কার?
-- এর core flow/component/assumption কী?
-
-এই প্রশ্নগুলোর উত্তরে topicটা product requirement-এর সাথে fit করলে সেটাই সঠিক choice।
-
----
+এটি বেছে নিন তখনই, যখন problem statement, SLA/SLO, এবং operational ownership পরিষ্কার।
+- strongest signal: জন্য designing new সিস্টেমগুলো অথবা evolving existing সিস্টেমগুলো এর অধীনে scale/reliability constraints।
+- business signal: একটি feature যা কাজ করে on one machine পারে fail যখন ইউজাররা, ডেটা, অথবা ট্রাফিক grow।
+- choose করবেন যদি monitoring, rollback, এবং runbook maintain করার সক্ষমতা টিমের থাকে।
+- choose করবেন না যদি scope এত ছোট হয় যে pattern-এর complexity লাভের চেয়ে বেশি হয়ে যায়।
 
 ### কিন্তু কোথায় বিপদ?
 
-এই টপিক ভুলভাবে ব্যবহার করলে সাধারণত এই সমস্যা দেখা দেয়:
+`System Design – Introduction` ভুল context-এ নিলে solution-এর বদলে নতুন incident তৈরি করে।
+- wrong context: জন্য small scripts অথবা local tools যেখানে operational overhead matters more than architecture।
+- misuse করলে latency বেড়ে যেতে পারে, stale/incorrect output আসতে পারে, বা retry cascade তৈরি হতে পারে।
+- interview red flag: Jumping straight to Kafka, Redis, অথবা শার্ডিং ছাড়া clarifying requirements।
+- ownership অস্পষ্ট থাকলে incident-এর সময় detection, decision, recovery - সব ধাপ ধীর হয়ে যায়।
 
-- ভুল context: জন্য small scripts অথবা local tools যেখানে operational overhead matters more than architecture.
-- ইন্টারভিউ রেড ফ্ল্যাগ: Jumping straight to Kafka, Redis, অথবা শার্ডিং ছাড়া clarifying requirements.
-- Thinking there হলো one "correct" design.
-- Ignoring non-functional requirements (scale, ল্যাটেন্সি, ডিউরেবিলিটি, খরচ).
-- Treating diagrams as design এর বদলে explaining behavior এর অধীনে লোড/ফেইলিউর.
+### মুনের কেস (ধাপে ধাপে)
 
-তাই মন্টু এক জিনিস পরিষ্কার রাখে:
+- ধাপ ১: business flow থেকে critical path বনাম non-critical path আলাদা করুন।
+- ধাপ ২: `System Design – Introduction` design-এর invariant লিখুন: কোনটা ভাঙা যাবে না, কোনটা degrade হতে পারে।
+- ধাপ ৩: capacity plan করুন (steady load, burst load, failure load আলাদা করে)।
+- ধাপ ৪: guardrail দিন (idempotency, rate control, timeout, retry budget, fallback)।
+- ধাপ ৫: load test + failure drill চালিয়ে production readiness validate করুন।
 
-> `System Design – Introduction` শুধু term না; context + trade-off + user impact একসাথে define না করলে design answer অসম্পূর্ণ।
-
----
-
-### মন্টুর কেস (ধাপে ধাপে)
-
-- ধাপ ১: functional requirements clarify করুন।
-- ধাপ ২: non-functional priorities ঠিক করুন।
-- ধাপ ৩: high-level design sketch করুন।
-- ধাপ ৪: bottlenecks/failure/trade-offs deep dive করুন।
-- ধাপ ৫: summary ও future improvements দিয়ে wrap up করুন।
-
----
-
-### এই টপিকে মন্টু কী সিদ্ধান্ত নিচ্ছে?
+### এই টপিকে মুন কী সিদ্ধান্ত নিচ্ছে?
 
 - এই টপিক কোন সমস্যা solve করে - এক লাইনে সেটা কি পরিষ্কার?
 - এর core flow/component/assumption কী?
 - কোন trade-off বা limitation জানালে উত্তর বাস্তবসম্মত হবে?
 
----
-
 ## এক লাইনে
 
-- `System Design – Introduction` সিস্টেম ডিজাইনের foundational thinking framework—requirements, constraints, trade-off, আর structured reasoning দিয়ে design শুরু করার পথ।
-- এই টপিকে বারবার আসতে পারে: introduction, requirements clarity, non-functional constraints, trade-offs, failure cases
+- `System Design – Introduction` হলো এমন একটি design lens, যা business requirement আর system behavior-কে একই ফ্রেমে আনে।
+- Interview keywords: introduction, requirements clarity, non-functional constraints, trade-offs, failure cases।
 
 ## এটা কী (থিওরি)
 
-সহজ ভাষায় সংজ্ঞা ও মূল ধারণা:
-
-- বাংলা সারাংশ: `System Design – Introduction` টপিকটি সিস্টেম ডিজাইনের বেসিক চিন্তার কাঠামো, terminology, এবং problem-framing বোঝার ভিত্তি তৈরি করে।
-
-- সিস্টেম Design হলো the practice of choosing components, ডেটা flow, এবং ট্রেড-অফ to বানানো software যা কাজ করে reliably at বাস্তব স্কেল.
-- ইন্টারভিউতে, it হলো less about perfect architecture এবং more about structured thinking.
+- বাংলা সারাংশ: `System Design – Introduction` কেবল সংজ্ঞা না; এটি problem-context অনুযায়ী সঠিক guarantee ও architecture boundary বেছে নেওয়ার কৌশল।
+- সহজ সংজ্ঞা: System Design is the practice of choosing components, data flow, and trade-offs to build software that works reliably at real-world scale।
+- মেটাফর: একে শহরের ট্রাফিক কন্ট্রোলের মতো ভাবুন, যেখানে সব রাস্তায় একই নিয়ম দিলে জ্যাম হয়; lane-ভিত্তিক নিয়ম দিলে flow স্থিতিশীল হয়।
 
 ## কেন দরকার
 
-কেন এই ধারণা/প্যাটার্ন দরকার হয়:
-
-- বাংলা সারাংশ: সিস্টেম ডিজাইনে feature-only ভাবলে scale, failure, cost, এবং maintainability মিস হয়ে যায়; তাই structured design thinking দরকার।
-
-- একটি feature যা কাজ করে on one machine পারে fail যখন ইউজাররা, ডেটা, অথবা ট্রাফিক grow.
-- টিমগুলো need a way to reason about scale, ফেইলিউরগুলো, খরচ, এবং মেইনটেইনেবিলিটি আগে building.
+- সমস্যা সাধারণত load, data, team, আর dependency একসাথে বড় হলে দেখা দেয়।
+- business impact: একটি feature যা কাজ করে on one machine পারে fail যখন ইউজাররা, ডেটা, অথবা ট্রাফিক grow।
+- এই design না থাকলে short-term patch জমতে জমতে সিস্টেম brittle হয়ে যায়।
 
 ## কীভাবে কাজ করে (সিনিয়র-লেভেল ইনসাইট)
 
-বাস্তবে/প্রোডাকশনে সাধারণত এভাবে কাজ করে:
-
-- বাংলা সারাংশ: এই অংশে requirement → architecture → bottleneck → trade-off → failure behavior ধারাবাহিকভাবে explain করলে senior-level reasoning দেখায়।
-
-- আপনি break a problem into requirements, constraints, APIs, ডেটা model, ট্রাফিক patterns, এবং ফেইলিউর মোড.
-- Good design হলো ট্রেড-অফ management: ল্যাটেন্সি vs খরচ, কনসিসটেন্সি vs অ্যাভেইলেবিলিটি, speed of delivery vs long-term complexity.
-- Interviewers usually score clarity of reasoning more than naming fancy tools.
+- সিনিয়র দৃষ্টিতে `System Design – Introduction` কাজ করে clear boundary তৈরির মাধ্যমে: data path, control path, failure path আলাদা করা হয়।
+- policy + automation + observability একসাথে না থাকলে design কাগজে ভালো, production-এ দুর্বল।
+- trade-off rule: reliability বাড়াতে গেলে cost/complexity বাড়ে; simplicity চাইলে কিছু flexibility কমে।
+- production-ready বলতে বোঝায়: measurable SLO, alerting, graceful degradation, এবং tested recovery।
 
 ## বাস্তব উদাহরণ
 
-একটি পরিচিত প্রোডাক্ট/সিস্টেমের উদাহরণ:
-
-- বাংলা সারাংশ: বাস্তব উদাহরণে খেয়াল করুন, `System Design – Introduction` একই product-এর ভিন্ন feature/path-এ ভিন্নভাবে apply হতে পারে; context-টাই আসল।
-
-- **YouTube** needs very different design choices জন্য video upload, encoding, search, recommendations, এবং playback, even though all হলো part of one product.
+- `YouTube`-এর মতো সিস্টেমে একই pattern সব feature-এ একভাবে চলে না; context অনুযায়ী প্রয়োগ বদলায়।
+- তাই `System Design – Introduction` implement করার আগে traffic shape, state model, dependency graph, আর blast radius map করা জরুরি।
 
 ## ইন্টারভিউ পার্সপেক্টিভ
 
-ইন্টারভিউতে উত্তর দেওয়ার সময় যেসব দিক বললে ভালো হয়:
-
-- বাংলা সারাংশ: ইন্টারভিউতে `System Design – Introduction` explain করার সময় scope, user impact, trade-off, failure case, আর “কখন ব্যবহার করবেন না” — এই পাঁচটি দিক বললে উত্তর শক্তিশালী হয়।
-
-- কখন ব্যবহার করবেন: জন্য designing new সিস্টেমগুলো অথবা evolving existing সিস্টেমগুলো এর অধীনে scale/reliability constraints.
-- কখন ব্যবহার করবেন না: জন্য small scripts অথবা local tools যেখানে operational overhead matters more than architecture.
-- একটা কমন ইন্টারভিউ প্রশ্ন: \"Design a URL shortener / chat সিস্টেম / video platform. How do আপনি start?\"
-- রেড ফ্ল্যাগ: Jumping straight to Kafka, Redis, অথবা শার্ডিং ছাড়া clarifying requirements.
+- interviewer term মুখস্থ শুনতে চায় না; চায় আপনি decision reasoning দেখান।
+- ভালো উত্তর কাঠামো: Problem -> Why Now -> Chosen Design -> Trade-off -> Failure Handling -> Metrics।
+- red flag avoid করুন: Jumping straight to Kafka, Redis, অথবা শার্ডিং ছাড়া clarifying requirements।
+- junior common mistake: শুধু "scale করব" বলা, কিন্তু capacity number, dependency bottleneck, rollback plan না বলা।
+- trade-off স্পষ্ট বলুন: performance, cost, reliability, complexity।
 
 ## কমন ভুল / ভুল ধারণা
 
-যে ভুলগুলো অনেকেই করে:
-
-- বাংলা সারাংশ: `System Design – Introduction`-এ সাধারণ ভুল হলো শুধু term/definition বলা; context, limitation, operational cost, এবং user-visible impact না বলা।
-
-- Thinking there হলো one "correct" design.
-- Ignoring non-functional requirements (scale, ল্যাটেন্সি, ডিউরেবিলিটি, খরচ).
-- Treating diagrams as design এর বদলে explaining behavior এর অধীনে লোড/ফেইলিউর.
+- problem না বুঝে pattern-first architecture করা।
+- সব workload-এ একই policy চাপিয়ে দেওয়া।
+- failure mode, fallback, runbook না লিখে production-এ যাওয়া।
+- "আরেকটা বড় server"-কে long-term strategy ধরে নেওয়া।
 
 ## দ্রুত মনে রাখুন
 
-- রেড ফ্ল্যাগ মনে রাখুন: Jumping straight to Kafka, Redis, অথবা শার্ডিং ছাড়া clarifying requirements.
-- কমন ভুল এড়ান: Thinking there হলো one "correct" design.
-- ইন্টারভিউতে কখন ব্যবহার করবেন/করবেন না - দুইটাই বললে উত্তরের মান বাড়ে।
-- কেন দরকার (শর্ট নোট): একটি feature যা কাজ করে on one machine পারে fail যখন ইউজাররা, ডেটা, অথবা ট্রাফিক grow.
+- `System Design – Introduction` বাছাই করবেন requirement-fit দেখে, trend দেখে না।
+- বড় server short-term relief দেয়, কিন্তু SPOF আর coordination সমস্যা পুরো সমাধান করে না।
+- machine বাড়ালে capacity ও resilience বাড়ে, তবে distributed complexity-ও বাড়ে।
+- interview-তে সবসময় বলুন: কখন নেবেন, কখন নেবেন না, ভুল নিলে কী ভাঙবে।
